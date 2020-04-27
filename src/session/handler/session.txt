@@ -1,0 +1,59 @@
+
+(ns session.handler.session
+  (:require [ataraxy.response :as response]
+            [buddy.hashers :as hashers]
+            [clojure.java.jdbc :as jdbc]
+            duct.database.sql
+            [integrant.core :as ig]
+            [ring.util.response :as ring]
+            [session.view.session :as view]
+            [struct.core :as st]))
+
+;Boundaries
+(defprotocol User
+  (create-user [db db-params]))
+
+(extend-protocol User
+  duct.database.sql.Boundary
+  (create-user [{db :spec} params]
+    (try
+    (let [password (params :password)
+          pw-hash (hashers/derive password)
+          db-params (assoc params :password pw-hash)
+          results (jdbc/insert! db :users db-params)]
+      [nil (-> results ffirst val) ])
+    (catch Exception e
+      (let [[text table column] (re-find #"UNIQUE constraint failed:\s(\w*)\.(\w*)" (.getMessage e))]
+           (println table column))
+      (if (= (.getMessage e) "[SQLITE_CONSTRAINT]  Abort due to constraint violation (UNIQUE constraint failed: users.email)")
+        [{:email "This email has already been taken"} nil]
+        (throw e))))))
+
+;Validations
+(def user-schema
+  [[:email st/required st/string]
+   [:password st/required st/string]])
+
+(defn validate-user [params]
+  (st/validate params user-schema {:strip true}))
+
+;Initialise Keys
+(defmethod ig/init-key :session.handler.session/new-user [_ _]
+  (fn [{:keys [flash]}]
+    (let [data flash]
+      [::response/ok (view/new-user data)])))
+
+(defmethod ig/init-key :session.handler.session/create-user [_ {:keys [db]}]
+  (fn [{:keys [params]}]
+    (let [[errors params] (validate-user params)
+          [errors result] (if-not errors (create-user db params) [errors nil])]
+    (if errors
+      (-> (ring/redirect "/user/new")
+          (assoc :flash (assoc params :errors errors)))
+      (do
+        (println result)
+        (ring/redirect "/user/new"))))))
+
+(defmethod ig/init-key :session.handler.session/welcome [_ _]
+  (fn [_]
+    [::response/ok (view/new-user)]))

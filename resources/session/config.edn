@@ -1,0 +1,45 @@
+{:duct.profile/base
+ {:duct.core/project-ns session
+
+  ;routes
+  :duct.router/ataraxy
+  {:middleware {:middleware/secure #ig/ref :session.middleware/secure}
+
+   :routes
+   {[:get "/user/new"]  [:session.handler.session/new-user]
+    [:post "/user/new"] [:session.handler.session/create-user]
+    [:get "/logon"]     [:session.handler.session/logon]
+    [:post "/logon"]    [:session.handler.session/create]
+    [:get "/logoff"]    [:session.handler.session/logoff]
+    [:get "/welcome"] ^:middleware/secure  [:session.handler.session/welcome]}}
+
+  ; middleware
+  :session.middleware/secure {}
+
+  ;handlers
+  [:session.handler.session/new-user] {}
+  [:session.handler.session/create-user] {:db #ig/ref :duct.database/sql}
+  [:session.handler.session/logon] {}
+  [:session.handler.session/logoff] {}
+  [:session.handler.session/create] {:db #ig/ref :duct.database/sql}
+  [:session.handler.session/welcome] {}
+
+  ;migrations
+  :duct.migrator/ragtime
+  {:migrations [#ig/ref :session.migrations/create-user]}
+
+  [:duct.migrator.ragtime/sql :session.migrations/create-user]
+  {:up [#duct/resource "session/migrations/create-user.up.sql"]
+   :down [#duct/resource "session/migrations/create-user.down.sql"]}
+
+  }
+
+ :duct.profile/dev   #duct/include "dev"
+ :duct.profile/local #duct/include "local"
+ :duct.profile/prod  {}
+
+ :duct.module/logging {}
+ :duct.module/sql
+ {}
+ :duct.module.web/site
+ {}}
